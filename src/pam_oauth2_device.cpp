@@ -118,7 +118,7 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb,
 
 void make_authorization_request(const char *client_id,
                                 const char *client_secret, const char *scope,
-                                const char *device_endpoint, bool request_mfa,
+                                const char *device_endpoint, bool require_mfa,
                                 DeviceAuthResponse *response) {
   CURL *curl;
   CURLcode res;
@@ -131,7 +131,7 @@ void make_authorization_request(const char *client_id,
   }
   std::string params =
       std::string("client_id=") + client_id + "&scope=" + scope;
-  if (request_mfa) {
+  if (require_mfa) {
     params += "&acr_values=https://refeds.org/profile/mfa";
     params +=
         " urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport";
@@ -303,7 +303,7 @@ void show_prompt(pam_handle_t *pamh, const int qr_error_correction_level,
 bool is_authorized(Config *config, const char *username_local,
                    const char *username_remote, const char *user_acr) {
   // Check performing MFA
-  if (config->request_mfa) {
+  if (config->require_mfa) {
     if (strstr(user_acr, "https://refeds.org/profile/mfa") != nullptr) {
       syslog(LOG_WARNING, "user %s did not perform MFA", username_remote);
       return false;
@@ -394,7 +394,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     make_authorization_request(
         config.client_id.c_str(), config.client_secret.c_str(),
         config.scope.c_str(), config.device_endpoint.c_str(),
-        config.request_mfa, &device_auth_response);
+        config.require_mfa, &device_auth_response);
     show_prompt(pamh, config.qr_error_correction_level, config.qr_show,
                 &device_auth_response);
     poll_for_token(config.client_id.c_str(), config.client_secret.c_str(),
