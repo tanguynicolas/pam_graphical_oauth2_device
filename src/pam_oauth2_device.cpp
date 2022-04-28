@@ -11,7 +11,7 @@
 #include <thread>
 
 #include "include/config.hpp"
-#include "include/ldapquery.h"
+#include "include/ldapquery.hpp"
 #include "include/nayuki/QrCode.hpp"
 #include "include/nlohmann/json.hpp"
 
@@ -118,7 +118,7 @@ static size_t WriteCallback(void *contents, size_t size, size_t nmemb,
 
 void make_authorization_request(const char *client_id,
                                 const char *client_secret, const char *scope,
-                                const char *device_endpoint, bool request_mfa,
+                                const char *device_endpoint, bool require_mfa,
                                 DeviceAuthResponse *response) {
   CURL *curl;
   CURLcode res;
@@ -131,7 +131,7 @@ void make_authorization_request(const char *client_id,
   }
   std::string params =
       std::string("client_id=") + client_id + "&scope=" + scope;
-  if (request_mfa) {
+  if (require_mfa) {
     params += "&acr_values=https://refeds.org/profile/mfa";
     params +=
         " urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport";
@@ -300,49 +300,53 @@ void show_prompt(pam_handle_t *pamh, const int qr_error_correction_level,
   if (response) free(response);
 }
 
-bool is_authorized(Config *config, const char *username_local,
-                   const char *username_remote, const char *user_acr) {
+bool is_authorized(const Config &config, const std::string &username_local,
+                   const std::string &username_remote,
+                   const std::string &user_acr) {
   // Check performing MFA
-  if (config->request_mfa) {
-    if (strstr(user_acr, "https://refeds.org/profile/mfa") != nullptr) {
-      syslog(LOG_WARNING, "user %s did not perform MFA", username_remote);
+  if (config.require_mfa) {
+    if (strstr(user_acr.c_str(), "https://refeds.org/profile/mfa") != NULL) {
+      syslog(LOG_WARNING, "user %s did not perform MFA",
+             username_remote.c_str());
       return false;
     }
   }
   // Try to authorize against local config
-  if (config->usermap.count(username_remote) > 0) {
-    if (config->usermap[username_remote].count(username_local) > 0) {
-      syslog(LOG_INFO, "user %s mapped to %s", username_remote, username_local);
+  if (config.usermap.count(username_remote) > 0) {
+    if (config.usermap.find(username_remote)->second.count(username_local) >
+        0) {
+      syslog(LOG_INFO, "user %s mapped to %s", username_remote.c_str(),
+             username_local.c_str());
       return true;
     }
   }
   // Try to authorize against LDAP
-  if (!config->ldap_hosts.empty()) {
-    size_t filter_length =
-        config->ldap_filter.length() + sizeof(username_remote);
-    char *filter = new char[filter_length];
+  if (!config.ldap_hosts.empty()) {
+    std::string filter;
+    auto filter_length = config.ldap_filter.length() + username_remote.length();
+    char *filter_buffer = new char[filter_length];
     // Ignore `format` error, `ldap_filter` value is defined in the config
     // file by a privilaged user.
     // Flawfinder: ignore
-    snprintf(filter, filter_length, config->ldap_filter.c_str(),
-             username_remote);
-    for (auto ldap_host : config->ldap_hosts) {
-      int rc = ldap_check_attr(ldap_host.c_str(), config->ldap_basedn.c_str(),
-                               config->ldap_user.c_str(),
-                               config->ldap_passwd.c_str(), filter,
-                               config->ldap_attr.c_str(), username_local);
+    snprintf(filter_buffer, filter_length, config.ldap_filter.c_str(),
+             username_remote.c_str());
+    filter = filter_buffer;
+    delete[] filter_buffer;
+
+    for (auto ldap_host : config.ldap_hosts) {
+      int rc = ldap_check_attr(ldap_host, config.ldap_basedn, config.ldap_user,
+                               config.ldap_passwd, filter, config.ldap_attr,
+                               username_local);
       if (rc == LDAPQUERY_TRUE) {
-        delete[] filter;
-        syslog(LOG_INFO, "user %s mapped to %s via LDAP", username_remote,
-               username_local);
+        syslog(LOG_INFO, "user %s mapped to %s via LDAP",
+               username_remote.c_str(), username_local.c_str());
         return true;
       }
     }
-    delete[] filter;
   }
   syslog(LOG_WARNING,
          "cannot find mapping between user %s and local account %s",
-         username_remote, username_local);
+         username_remote.c_str(), username_local.c_str());
   return false;
 }
 
@@ -366,7 +370,11 @@ PAM_EXTERN int pam_sm_acct_mgmt(pam_handle_t *pamh, int flags, int argc,
 /* expected hook, custom logic */
 PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
                                    const char **argv) {
-  const char *username_local;
+  // NOTE: buffer memory should NOT be freed. When freed the username value
+  // stored in the buffer is unavailable to the subsequent PAM modules.
+  // For more information see issue #27.
+  const char *buffer;
+  std::string username_local;
   std::string token;
   Config config;
   DeviceAuthResponse device_auth_response;
@@ -386,15 +394,15 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
   }
 
   try {
-    if (int rc =
-            pam_get_user(pamh, &username_local, "Username: ") != PAM_SUCCESS) {
+    if (int rc = pam_get_user(pamh, &buffer, "Username: ") != PAM_SUCCESS) {
       syslog(LOG_ERR, "pam_get_user failed, rc=%d", rc);
       throw PamError();
     }
+
     make_authorization_request(
         config.client_id.c_str(), config.client_secret.c_str(),
         config.scope.c_str(), config.device_endpoint.c_str(),
-        config.request_mfa, &device_auth_response);
+        config.require_mfa, &device_auth_response);
     show_prompt(pamh, config.qr_error_correction_level, config.qr_show,
                 &device_auth_response);
     poll_for_token(config.client_id.c_str(), config.client_secret.c_str(),
@@ -410,11 +418,13 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     return safe_return(PAM_AUTH_ERR);
   }
 
-  if (is_authorized(&config, username_local, userinfo.username.c_str(),
-                    userinfo.acr.c_str())) {
-    syslog(LOG_INFO, "authentication succeeded");
+  username_local = buffer;
+  if (is_authorized(config, username_local, userinfo.username, userinfo.acr)) {
+    syslog(LOG_INFO, "authentication succeeded: %s -> %s",
+           userinfo.username.c_str(), username_local.c_str());
     return safe_return(PAM_SUCCESS);
   }
-  syslog(LOG_INFO, "authentication failed");
+  syslog(LOG_INFO, "authentication failed: %s -> %s", userinfo.username.c_str(),
+         username_local.c_str());
   return safe_return(PAM_AUTH_ERR);
 }

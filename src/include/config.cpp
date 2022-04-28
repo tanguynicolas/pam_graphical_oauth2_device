@@ -20,6 +20,9 @@ void Config::load(const char *path) {
   userinfo_endpoint = j.at("oauth").at("userinfo_endpoint").get<std::string>();
   username_attribute =
       j.at("oauth").at("username_attribute").get<std::string>();
+  require_mfa = j["oauth"].contains("require_mfa")
+                    ? j.at("oauth").at("require_mfa").get<bool>()
+                    : false;
   qr_error_correction_level =
       j.at("qr").at("error_correction_level").get<int>();
   qr_show =
@@ -46,9 +49,5 @@ void Config::load(const char *path) {
         }
       }
     }
-  }
-  request_mfa = false;
-  if (j["oauth"].contains("request_mfa")) {
-    request_mfa = j.at("oauth").at("request_mfa").get<bool>();
   }
 }

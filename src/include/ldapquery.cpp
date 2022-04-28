@@ -1,13 +1,16 @@
-#include "ldapquery.h"  // NOLINT(build/include_subdir)
+#include "ldapquery.hpp"
 
 #include <ldap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-int ldap_check_attr(const char *host, const char *basedn, const char *user,
-                    const char *passwd, const char *filter, const char *attr,
-                    const char *value) {
+#include <string>
+
+int ldap_check_attr(const std::string &host, const std::string &basedn,
+                    const std::string &user, const std::string &passwd,
+                    const std::string &filter, const std::string &attr,
+                    const std::string &value) {
   LDAP *ld;
   LDAPMessage *res, *msg;
   BerElement *ber;
@@ -20,7 +23,7 @@ int ldap_check_attr(const char *host, const char *basedn, const char *user,
   char *attrs[] = {attr_local, NULL};
   const int ldap_version = LDAP_VERSION3;
 
-  if (ldap_initialize(&ld, host) != LDAP_SUCCESS) {
+  if (ldap_initialize(&ld, host.c_str()) != LDAP_SUCCESS) {
     return LDAPQUERY_ERROR;
   }
 
@@ -29,20 +32,20 @@ int ldap_check_attr(const char *host, const char *basedn, const char *user,
     return LDAPQUERY_ERROR;
   }
 
-  passwd_local = (char *)malloc(sizeof(passwd));  // NOLINT(readability/casting)
-  snprintf(passwd_local, sizeof(passwd), "%s", passwd);
+  passwd_local = new char[passwd.length() + 1];
+  snprintf(passwd_local, passwd.length() + 1, "%s", passwd.c_str());
   cred.bv_val = passwd_local;
-  cred.bv_len = sizeof(passwd) - 1;
-  rc = ldap_sasl_bind_s(ld, user, LDAP_SASL_SIMPLE, &cred, NULL, NULL,
+  cred.bv_len = passwd.length();
+  rc = ldap_sasl_bind_s(ld, user.c_str(), LDAP_SASL_SIMPLE, &cred, NULL, NULL,
                         &servercredp);
-  free(passwd_local);
+  delete[] passwd_local;
   if (rc != LDAP_SUCCESS) {
     return LDAPQUERY_ERROR;
   }
 
-  attr_local = strdup(attr);
-  rc = ldap_search_ext_s(ld, basedn, LDAP_SCOPE_SUBTREE, filter, attrs, 0, NULL,
-                         NULL, NULL, 0, &res);
+  attr_local = strdup(attr.c_str());
+  rc = ldap_search_ext_s(ld, basedn.c_str(), LDAP_SCOPE_SUBTREE, filter.c_str(),
+                         attrs, 0, NULL, NULL, NULL, 0, &res);
   free(attr_local);
   if (rc != LDAP_SUCCESS) {
     ldap_msgfree(res);
@@ -59,8 +62,8 @@ int ldap_check_attr(const char *host, const char *basedn, const char *user,
              a = ldap_next_attribute(ld, res, ber)) {
           if ((vals = ldap_get_values_len(ld, res, a)) != NULL) {
             for (i = 0; vals[i] != NULL; ++i) {
-              if (strcmp(a, attr) == 0) {
-                if (strcmp(vals[i]->bv_val, value) == 0) {
+              if (strcmp(a, attr.c_str()) == 0) {
+                if (strcmp(vals[i]->bv_val, value.c_str()) == 0) {
                   rc = LDAPQUERY_TRUE;
                 }
               }
