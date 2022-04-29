@@ -131,3 +131,7 @@ You can run linter (`cpplint`) locally with `cpplint src/* src/include/*`.
 
 Make sure that unit tests are passing, see [test/README.md](test/README.md).
 Add new tests if necessary.
+
+## Security review
+
+The code has been reviewed for security vulnerabilities at the University of Basel and Swiss Institute of Bioinformatics by Louis Ruppert and Aurélien Cavelan.
