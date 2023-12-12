@@ -432,7 +432,8 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
                    device_auth_response.device_code.c_str(), &token);
     get_userinfo(config.userinfo_endpoint.c_str(), token.c_str(),
                  config.username_attribute.c_str(), &userinfo);
-  } catch (PamError &e) {
+
+   } catch (PamError &e) {
     return safe_return(PAM_SYSTEM_ERR);
   } catch (TimeoutError &e) {
     return safe_return(PAM_AUTH_ERR);
@@ -440,7 +441,18 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     return safe_return(PAM_AUTH_ERR);
   }
 
-  username_local = buffer;
+ //  username_local = buffer;
+ // Utilise l'utilisateur distant comme utilisateur local -> Nouvelle lignes ====================================
+  size_t at_position = userinfo.username.find('@');
+  if (at_position != std::string::npos) {
+      username_local = userinfo.username.substr(0, at_position);
+  } else {
+      // En cas d'erreur, utilise l'adresse e-mail complète comme nom d'utilisateur local
+      username_local = userinfo.username;
+  }
+
+// FIN -> Nouvelle lignes =======================================================================================
+
   if (is_authorized(config, username_local, userinfo.username, userinfo.acr)) {
     syslog(LOG_INFO, "authentication succeeded: %s -> %s",
            userinfo.username.c_str(), username_local.c_str());
