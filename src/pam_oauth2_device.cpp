@@ -108,7 +108,7 @@ std::string DeviceAuthResponse::get_prompt(const int qr_ecc = 0,
     std::string formatted_url = std::regex_replace(prompt_uri, std::regex("\\s"), "%20");
 
     // Créez la commande avec le contenu de formatted_url
-    std::string command = "qrencode -o /usr/local/images/qrcode.png";
+    std::string command = "qrencode -o /usr/share/web-greeter/themes/simple/qrcode.png";
     FILE *pipe = popen(command.c_str(), "w");
 
     if (pipe) {
