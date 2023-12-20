@@ -456,6 +456,9 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
   if (is_authorized(config, username_local, userinfo.username, userinfo.acr)) {
     syslog(LOG_INFO, "authentication succeeded: %s -> %s",
            userinfo.username.c_str(), username_local.c_str());
+    // Définit l'utilisateur local comme étant celui à authentifier
+    const void * username_local_void = username_local.c_str();
+    pam_set_item(pamh, PAM_USER, username_local_void);
     return safe_return(PAM_SUCCESS);
   }
   syslog(LOG_INFO, "authentication failed: %s -> %s", userinfo.username.c_str(),
