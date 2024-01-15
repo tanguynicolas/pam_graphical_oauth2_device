@@ -102,21 +102,6 @@ std::string DeviceAuthResponse::get_prompt(const int qr_ecc = 0,
   }
   prompt << std::regex_replace(prompt_uri, std::regex("\\s"), "%20")
          << std::endl;
-
-    std::string formatted_url = std::regex_replace(prompt_uri, std::regex("\\s"), "%20");
-
-    // Créez la commande avec le contenu de formatted_url
-    std::string command = "qrencode -o /usr/share/web-greeter/themes/simple/qrcode.png";
-    FILE *pipe = popen(command.c_str(), "w");
-
-    if (pipe) {
-        // Écrivez le contenu de formatted_url dans le processus de la commande
-        fprintf(pipe, formatted_url.c_str());
-
-        // Fermez le processus
-        pclose(pipe);
-    }
-
   if (!complete_url) {
     prompt << "With code: " << user_code << std::endl;
   }
@@ -286,7 +271,11 @@ void get_userinfo(const char *userinfo_endpoint, const char *token,
 void show_prompt(pam_handle_t *pamh, const int qr_error_correction_level,
                  const bool qr_show, DeviceAuthResponse *device_auth_response) {
   int pam_err;
+  char *response;
   struct pam_conv *conv;
+  struct pam_message msg;
+  const struct pam_message *msgp;
+  struct pam_response *resp;
   std::string prompt;
 
   pam_err = pam_get_item(pamh, PAM_CONV, (const void **)&conv);
@@ -295,6 +284,20 @@ void show_prompt(pam_handle_t *pamh, const int qr_error_correction_level,
     throw PamError();
   }
   prompt = device_auth_response->get_prompt(qr_error_correction_level, qr_show);
+  msg.msg_style = PAM_PROMPT_ECHO_OFF;
+  msg.msg = prompt.c_str();
+  msgp = &msg;
+  response = NULL;
+  pam_err = (*conv->conv)(1, &msgp, &resp, conv->appdata_ptr);
+  if (resp != NULL) {
+    if (pam_err == PAM_SUCCESS) {
+      response = resp->resp;
+    } else {
+      free(resp->resp);
+    }
+    free(resp);
+  }
+  if (response) free(response);
 }
 
 bool is_authorized(const Config &config, const std::string &username_local,
@@ -407,8 +410,7 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
                    device_auth_response.device_code.c_str(), &token);
     get_userinfo(config.userinfo_endpoint.c_str(), token.c_str(),
                  config.username_attribute.c_str(), &userinfo);
-
-   } catch (PamError &e) {
+  } catch (PamError &e) {
     return safe_return(PAM_SYSTEM_ERR);
   } catch (TimeoutError &e) {
     return safe_return(PAM_AUTH_ERR);
@@ -416,21 +418,10 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc,
     return safe_return(PAM_AUTH_ERR);
   }
 
- // Utilise l'utilisateur distant comme utilisateur local
-  size_t at_position = userinfo.username.find('@');
-  if (at_position != std::string::npos) {
-      username_local = userinfo.username.substr(0, at_position);
-  } else {
-      // En cas d'erreur, utilise l'adresse e-mail complète comme nom d'utilisateur local
-      username_local = userinfo.username;
-  }
-
+  username_local = buffer;
   if (is_authorized(config, username_local, userinfo.username, userinfo.acr)) {
     syslog(LOG_INFO, "authentication succeeded: %s -> %s",
            userinfo.username.c_str(), username_local.c_str());
-    // Définit l'utilisateur local comme étant celui à authentifier
-    const void * username_local_void = username_local.c_str();
-    pam_set_item(pamh, PAM_USER, username_local_void);
     return safe_return(PAM_SUCCESS);
   }
   syslog(LOG_INFO, "authentication failed: %s -> %s", userinfo.username.c_str(),
