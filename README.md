@@ -1,5 +1,7 @@
 # PAM module for OAuth 2.0 Device Authorization Grant
 
+*Forked from [ICS-MU/pam_oauth2_device](https://github.com/ICS-MU/pam_oauth2_device)*
+
 PAM module for user graphical authentication using
 [OAuth 2.0 Device Authorization Grant](https://tools.ietf.org/html/rfc8628).
 
