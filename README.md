@@ -5,7 +5,7 @@ PAM module for user graphical authentication using
 
 The following instructions have been tested on Debian 11.
 
-## Installation
+## Make binary (.so)
 
 Install build dependencies.
 
@@ -20,25 +20,6 @@ git clone https://github.com/tanguynicolas/pam_graphical_oauth2_device
 cd pam_graphical_oauth2_device
 make
 ```
-
-### Deployment
-
-```bash
-sudo cp pam_oauth2_device.so /lib/security/
-# or make a symlink so you don't need to copy the file each
-# time you compile the module
-sudo ln -s pam_oauth2_device.so /lib/security/
-```
-
-### Testing
-
-```bash
-pamtester -v pamtester <username> authenticate
-```
-
-## Security review
-
-The code has been reviewed for security vulnerabilities at the University of Basel and Swiss Institute of Bioinformatics by Louis Ruppert and Aurélien Cavelan.
 
 ## Modifications apportées par ce fork
 
