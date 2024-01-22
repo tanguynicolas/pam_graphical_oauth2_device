@@ -12,7 +12,7 @@ The following instructions have been tested on Debian 11.
 Install build dependencies.
 
 ```bash
-sudo apt install libldap2-dev libpam0g-dev libcurl4-openssl-dev
+sudo apt install libldap2-dev libpam0g-dev libcurl4-openssl-dev make build-essential
 ```
 
 Clone the repository, build and install the module.
